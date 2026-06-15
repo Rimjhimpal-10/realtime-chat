@@ -1,10 +1,22 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import { useState } from "react";
 
 const Page = () => {
   const params = useParams();
   const roomId = params.roomId as string;
+
+  const[copyStatus,setCopyStatus]=useState("COPY");
+
+  const copylink=()=>{
+    const url=window.location.href
+    navigator.clipboard.writeText(url)
+    setCopyStatus("COPIED")
+    setTimeout(() => {
+        setCopyStatus("COPY")
+    }, 2000);
+  }
 
   return (
     <main className="flex flex-col h-screen max-h-screen overflow-hidden">
@@ -19,7 +31,9 @@ const Page = () => {
                     <span className="font-bold text-green-500">
                         {roomId}
                     </span>
-                    <button className=" text-[10px] bg-zinc-800 hover:bg-zinc-700 px-2 py-0.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors"> Copy
+                    <button onClick={copylink} className="text-[10px] bg-zinc-800 hover:bg-zinc-700 
+                    px-2 py-0.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors">
+                        {copyStatus}
                     </button>
                 </div>
             </div>
@@ -28,5 +42,6 @@ const Page = () => {
     </main>
   );
 };
+
 
 export default Page;
