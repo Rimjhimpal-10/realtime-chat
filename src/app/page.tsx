@@ -3,7 +3,7 @@ import { useState,useEffect } from "react";
 import { nanoid } from "nanoid";
 import { client } from "@/lib/client";
 import { useMutation } from "@tanstack/react-query";
-import { useRouter } from "next/router";
+import { useRouter } from "next/navigation";
 
 
 
