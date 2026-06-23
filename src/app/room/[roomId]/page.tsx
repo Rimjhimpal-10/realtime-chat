@@ -79,7 +79,20 @@ const Page = () => {
                 {">"}
               </span>
 
-              <input autoFocus type="text" className="   w-full   bg-black   border border-zinc-800   focus:border-zinc-700   focus:outline-none   transition-colors   text-zinc-100   placeholder:text-zinc-700   py-3   pl-8   pr-4   text-sm " />
+              {/* so auto focus se..page khulte hi cursor input box mai ajata hai then value={input} as in input box mai jo text dikhega  wo input state se ayega
+              the on keydown maane enter press hua toh send krdo and again cursor input box mai ......onchange mtlb r.target.value jb change ho to usse state mai update krdo
+               */}
+
+              <input autoFocus type="text"
+               value={input} 
+              onKeyDown={(e)=>{if(e.key==="Enter" && input.trim()){
+                //todo send msg
+                  inputRef.current?.focus()
+              }}} 
+              onChange={(e)=>setInput(e.target.value)} 
+
+              placeholder="type message..."
+              className="   w-full   bg-black   border border-zinc-400   focus:border-zinc-700   focus:outline-none   transition-colors   text-zinc-100   placeholder:text-zinc-700   py-3   pl-8   pr-4   text-sm " />
           </div>
           <button className="bg-zinc-800 text-zinc-400 px-6 text-sm font-black hover:text-zinc-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed cusor-pointer"> SEND</button>
         </div>
