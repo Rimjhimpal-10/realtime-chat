@@ -1,46 +1,35 @@
 "use client"
 import { useState,useEffect } from "react";
-import { nanoid } from "nanoid";
 import { client } from "@/lib/client";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { useUsername } from "@/hooks/use-username";
+import { useSearchParams } from "next/navigation";
 
-
-
-
-const ANIMALS = ["wolf", "hawk", "bear", "shark"];
-const STORAGE_KEY = "chat_username";
-
-const generateUsername = () => {
-  const word =
-    ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
-
-  return `anonymous-${word}-${nanoid(5)}`;
-};
 
 
 export default function Home() {
-  const [username, setUsername] = useState("");
+  const {username}=useUsername();
   const router=useRouter();
 
-  useEffect(() => {
-    const main = () => {
-      const stored = localStorage.getItem(STORAGE_KEY);
+  
 
-      if (stored) {
-        setUsername(stored);
-        return;
-      }
+// Read query parameters from the URL.
+// Example:
+// /?error=room-full&destroyed=true
 
-      const generated = generateUsername();
+const searchParams = useSearchParams();
 
-      localStorage.setItem(STORAGE_KEY, generated);
-      setUsername(generated);
-    };
+// Convert the string "true" into a boolean.
+const wasDestroyed =
+  searchParams.get("destroyed") === "true";
 
-    main();
-  }, []);
+// Read the error message from the URL.
+// Returns a string (e.g. "room-full") or null if absent.
+const error =
+  searchParams.get("error");
 
+  
   const  {mutate:createRoom} =useMutation({
     mutationFn: async ()=>{
       const res=await client.room.create.post()
@@ -55,6 +44,57 @@ export default function Home() {
   return (
    <main className="flex min-h-screen flex-col items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
+
+        {wasDestroyed && (
+          <div className="bg-red-950/50 border border-red-900 p-4 text-center">
+          
+            <p className="text-red-500 text-sm font-bold">
+              ROOM DESTROYED
+            </p>
+
+            <p className="text-zinc-500 text-xs mt-1">
+              All messages were permanently deleted.
+            </p>
+
+          </div>
+        )}
+        {error==="room-not-found" && (
+          <div className="bg-red-950/50 border border-red-900 p-4 text-center">
+          
+            <p className="text-red-500 text-sm font-bold">
+              ROOM NOT FOUND
+            </p>
+
+            <p className="text-zinc-500 text-xs mt-1">
+              This room might have expired or never existed.
+            </p>
+
+          </div>
+        )}
+        {error==="room-full" && (
+          <div className="bg-red-950/50 border border-red-900 p-4 text-center">
+          
+            <p className="text-red-500 text-sm font-bold">
+              ROOM FULL
+            </p>
+
+            <p className="text-zinc-500 text-xs mt-1">
+              Room at its maximum capacity.
+            </p>
+
+          </div>
+        )}
+
+
+
+
+
+
+
+
+
+
+
 
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold tracking-tight text-green-400">{">"}PRIVATE CHAT</h1>
