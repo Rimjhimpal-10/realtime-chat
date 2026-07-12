@@ -22,7 +22,46 @@ const rooms=new Elysia({prefix:"/room"}).post("/create",async ()=>{
   await redis.expire(`meta:${roomId}`,ROOM_TTL_SECONDS)
 
   return {roomId,};
-})
+}).use(authMiddleware).get("/ttl", async ({ auth }) => {
+
+    // Ask Redis how many seconds are left before
+    // this room automatically expires.
+    const ttl = await redis.ttl(`meta:${auth.roomId}`);
+
+    // Redis returns:
+    // > 0  -> seconds remaining
+    // -1   -> key exists but has no expiry
+    // -2   -> key doesn't exist
+    //
+    // We only want to send a positive number.
+    return {
+      ttl: ttl > 0 ? ttl : 0,
+    };
+  },
+
+  {
+    // Validate that roomId is provided.
+    query: z.object({
+      roomId: z.string(),
+    }),
+  }).delete(
+  "/",
+  async ({ auth }) => {
+
+    await realtime.channel(auth.roomId).emit("chat.destroy",{isDestroyed:true})
+    
+    await Promise.all([
+      redis.del(auth.roomId),
+      redis.del(`meta:${auth.roomId}`),
+      redis.del(`messages:${auth.roomId}`),
+    ])
+
+    
+  },{
+    query:z.object({roomId:z.string()})
+  }
+)
+
 const messages= new Elysia({prefix :"/messages"}).use(authMiddleware).post("/",
   async ({body,auth})=>{
     const {sender,text}=body
@@ -115,5 +154,6 @@ const app = new Elysia({ prefix: "/api" }).use(rooms).use(messages);
 
 export const GET = app.fetch;
 export const POST = app.fetch;
+export const DELETE=app.fetch;
 
 export type App = typeof app;//sbka typescript banadeti h sare routs ka

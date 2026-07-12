@@ -1,14 +1,20 @@
 "use client"
-import { useState,useEffect } from "react";
+import { useState,useEffect, Suspense } from "react";
 import { client } from "@/lib/client";
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useUsername } from "@/hooks/use-username";
 import { useSearchParams } from "next/navigation";
 
+const Page=()=>{
+  return (
+  <Suspense>
+    <Lobby/>
+  </Suspense>
+  )
+}
 
-
-export default function Home() {
+function Lobby() {
   const {username}=useUsername();
   const router=useRouter();
 
@@ -86,16 +92,6 @@ const error =
         )}
 
 
-
-
-
-
-
-
-
-
-
-
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold tracking-tight text-green-400">{">"}PRIVATE CHAT</h1>
             <p className="text-zinc-500 text-sm"> private,self destructing chat room</p>
@@ -124,3 +120,6 @@ const error =
     </main>
   );
 }
+
+
+export default Page;

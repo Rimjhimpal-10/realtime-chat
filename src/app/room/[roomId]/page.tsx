@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState,useRef} from "react";
+import { useState,useRef, useEffect} from "react";
 import {format} from "date-fns";
 import { useMutation ,useQuery,useQueryClient} from "@tanstack/react-query";
 import { useUsername } from "@/hooks/use-username";
@@ -30,11 +30,56 @@ const Page = () => {
   const inputRef=useRef<HTMLInputElement>(null);
 
   const[copyStatus,setCopyStatus]=useState("COPY");
-  const[timeRemaining,setTimeRemainng]=useState<number | null>(51); //so that typescript knows that it will be set to number later or null
+  const[timeRemaining,setTimeRemaining]=useState<number | null>(null); //so that typescript knows that it will be set to number later or null
+
+  const {data:ttlData} = useQuery({
+    queryKey: ["ttl", roomId],
+
+    queryFn: async () => {
+     const res=await client.room.ttl.get({
+      query:{roomId}})
+      return res.data
+    },
+  });
+
+
+  useEffect(()=>{
+        if(ttlData?.ttl!==undefined)
+          setTimeRemaining(ttlData.ttl)
+    },[ttlData])
+
+    useEffect(() => {
+    if (timeRemaining === null || timeRemaining < 0) return;
+
+    if (timeRemaining === 0) {
+      router.push("/?destroyed=true");
+    }
+  }, [timeRemaining, router]);
+
+
+useEffect(() => {
+  if (timeRemaining === null) return;
+
+  const interval = setInterval(() => {
+    setTimeRemaining((prev) => {
+      if (prev === null || prev <= 1) {
+        clearInterval(interval);
+        return 0;
+      }
+
+      return prev - 1;
+    });
+  }, 1000);
+
+  return () => clearInterval(interval);
+
+}, [timeRemaining]);
 
   // Fetch previous chat messages for the current room.
 // React Query caches the result using ["messages", roomId],
 // so each room has its own cached chat history.
+
+
 
 
 
@@ -123,6 +168,12 @@ useRealtime({
   },
 });
 
+const{mutate:destroyRoom}=useMutation({
+  mutationFn:async()=>{
+    await client.room.delete(null,{query:{roomId}})
+  }
+})
+
 
   const copylink=()=>{
     const url=window.location.href
@@ -164,7 +215,9 @@ useRealtime({
               </div>
             
         </div>
-        <button className="text-xs bg-zinc-800 hover:bg-red-500 px-3 py-1.5 rounded text-zinc-400 hover:text-white font-bold transition-all group flexitems-center gap-2 disabled:opacity-50 ">
+        <button onClick={()=>{
+          destroyRoom()
+        }} className="text-xs bg-zinc-800 hover:bg-red-500 px-3 py-1.5 rounded text-zinc-400 hover:text-white font-bold transition-all group flexitems-center gap-2 disabled:opacity-50 ">
          <span className="group-hover animate-pulse">💥
          </span>
           DESTROY NOW
