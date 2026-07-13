@@ -1,182 +1,62 @@
-# 🔒 Private Chat
+# Private Chat
 
-A secure, anonymous, self-destructing real-time chat application built with **Next.js**, **Elysia**, **Redis**, **Upstash Realtime**, and **React Query**. Users can instantly create private chat rooms, exchange messages in real time, and automatically destroy conversations after a configurable time period.
+A self-destructing, two-person chat room built to explore type-safe API boundaries and TTL-driven data lifecycles. No accounts, no persistence beyond a room's lifetime — create a room, share the link, talk, and the whole thing deletes itself.
 
----
+Live stack: **Next.js 16** (App Router) on the frontend, **Elysia** running as a Next.js route handler on the backend, **Upstash Redis** for storage and expiry, **Upstash Realtime** for pub/sub, and **Eden Treaty** gluing the two together so the client calls the server through inferred types instead of hand-written fetches.
 
-## ✨ Features
+## Why this exists
 
-- 🔐 Anonymous usernames generated automatically
-- 🚀 One-click private room creation
-- ⚡ Real-time messaging using Upstash Realtime
-- 📨 Persistent chat history while the room is active
-- ⏳ Self-destruct countdown timer for every room
-- 💥 Manual room destruction
-- 🔗 Shareable room links
-- 👥 Maximum two users per room
-- 🚫 Automatic validation for:
-  - Room not found
-  - Room full
-  - Expired rooms
-- 🎯 Type-safe API with Elysia + Eden Treaty
-- 📦 Efficient server-state management with React Query
+Most CRUD-app tutorials don't touch two things that come up constantly in real backend work: expiring state cleanly, and keeping a client in sync with a server's types without codegen. This project is a small, complete surface to practice both.
 
----
+## How it's put together
 
-## 🛠 Tech Stack
+**Auth is a scoped Elysia plugin, not a global middleware.** [`auth.ts`](src/app/api/[[...slugs]]/auth.ts) derives an `auth` context (`roomId`, `token`) by checking the `x-auth-token` cookie against the `connected` list stored in Redis for that room, and throws a typed `AuthError` that a shared `.onError` handler maps to a 401. It's mounted with `{ as: "scoped" }` so only the route trees that `.use(authMiddleware)` — `rooms` and `messages` in [`route.ts`](src/app/api/[[...slugs]]/route.ts) — actually require it.
 
-### Frontend
-- Next.js 15 (App Router)
-- React
-- TypeScript
-- Tailwind CSS
-- React Query
+**The API is exported as a type, not documented as one.** `route.ts` exports `type App = typeof app`, and [`client.ts`](src/lib/client.ts) consumes it with `treaty<App>()`. Calling `client.room.create.post()` from a component autocompletes and type-checks against the live Elysia schema — if a route's Zod input changes, the client breaks at compile time instead of at runtime.
 
-### Backend
-- Elysia
-- Eden Treaty (Type-safe API client)
-- Upstash Redis
-- Upstash Realtime
-- Zod
+**Expiry cascades instead of being recomputed.** A room's Redis TTL (`meta:<roomId>`, 10 minutes, set in `route.ts`) is the single source of truth for when a room dies. Every time a message is sent, the handler reads the room's remaining TTL and re-applies it to `messages:<roomId>`, so message history always expires in lockstep with the room rather than needing its own timer.
 
----
+**Realtime events are schema-validated, not `any`.** [`realtime.ts`](src/lib/realtime.ts) defines `chat.message` and `chat.destroy` as Zod schemas and threads them through `InferRealtimeEvents`, so both the emit side (server) and the subscribe side (client, via [`realtime-client.ts`](src/lib/realtime-client.ts)) are typed against the same contract.
 
-## 📂 Project Structure
-
-```text
+```
 src/
-│
 ├── app/
-│   ├── api/
-│   │   ├── [[...slugs]]/
-│   │   └── realtime/
-│   ├── room/
-│   └── page.tsx
-│
+│   ├── api/[[...slugs]]/   Elysia app: room + message routes, auth plugin
+│   ├── api/realtime/       Upstash Realtime route handler
+│   ├── room/[roomId]/      Chat room UI
+│   └── page.tsx            Landing page / room creation
 ├── components/
-│
 ├── hooks/
-│
 ├── lib/
-│   ├── client.ts
-│   ├── realtime.ts
-│   ├── realtime-client.ts
-│   └── redis.ts
-│
-└── middleware/
+│   ├── client.ts            Eden Treaty client
+│   ├── realtime.ts           Realtime schema + server instance
+│   ├── realtime-client.ts    Client-side realtime subscription
+│   └── redis.ts              Upstash Redis client
+└── proxy.ts                  Room-capacity / cookie-issuing logic (see Known limitations)
 ```
 
----
+## Redis layout
 
-## ⚙️ How It Works
-
-### Room Creation
-
-1. User creates a room.
-2. A unique room ID is generated.
-3. Room metadata is stored in Redis with a TTL.
-4. A shareable room link is generated.
-
----
-
-### Joining a Room
-
-- Middleware verifies:
-  - Room exists
-  - Room isn't full
-  - User authentication cookie
-- User joins the room if validation succeeds.
-
----
-
-### Sending Messages
-
-1. Client sends a POST request.
-2. Message is stored in Redis.
-3. Upstash Realtime broadcasts the message.
-4. Connected clients instantly receive updates.
-
----
-
-### Self Destruct
-
-Each room has a configurable expiration timer.
-
-When the timer expires:
-
-- Room metadata is deleted.
-- Chat history is deleted.
-- Connected users are redirected.
-- A room destroyed notification is displayed.
-
-Users can also destroy the room manually.
-
----
-
-## 🗄 Redis Storage
-
-```text
-meta:<roomId>
-
-{
-  connected: [],
-  createdAt: ...
-}
+```
+meta:<roomId>      { connected: string[], createdAt: number }   TTL: 10 min
+messages:<roomId>  [ { id, sender, text, timestamp, roomId } ]  TTL: mirrors meta
 ```
 
-```text
-messages:<roomId>
+## Known limitations
 
-[
-  {
-    id,
-    sender,
-    text,
-    timestamp
-  }
-]
-```
+- **Room-capacity enforcement isn't wired up.** The logic that checks room size, redirects on `room-full`/`room-not-found`, and issues the `x-auth-token` cookie lives in [`src/proxy.ts`](src/proxy.ts) — but Next.js only auto-runs middleware from a file named `middleware.ts`. Since this file is named `proxy.ts`, it never executes. Practical effect: no cookie is currently issued on room join, so the auth-gated routes will 401. This is the next fix, not a design choice.
+- The Eden Treaty client in `client.ts` currently points at `localhost:3000`, so it needs to be made environment-aware before this runs anywhere but a local dev server.
+- Room TTL (10 minutes) is a constant, not yet configurable per room.
 
----
-
-## 🔄 Real-Time Flow
-
-```text
-User A
-   │
-   ▼
-POST /messages
-   │
-   ▼
-Redis
-   │
-   ▼
-Upstash Realtime
-   │
-   ▼
-chat.message event
-   │
-   ▼
-All connected clients
-```
-
----
-
-## 🚀 Getting Started
-
-Clone the repository
+## Getting started
 
 ```bash
-git clone https://github.com/your-username/private-chat.git
-```
-
-Install dependencies
-
-```bash
+git clone https://github.com/<your-username>/realtime-chat.git
+cd realtime-chat
 npm install
 ```
 
-Create a `.env.local`
+Create `.env.local`:
 
 ```env
 UPSTASH_REDIS_REST_URL=
@@ -186,40 +66,12 @@ NEXT_PUBLIC_UPSTASH_REALTIME_URL=
 NEXT_PUBLIC_UPSTASH_REALTIME_TOKEN=
 ```
 
-Run the development server
-
 ```bash
 npm run dev
 ```
 
----
+## Roadmap
 
-## 📸 Screenshots
-
-> Add screenshots or a demo GIF here.
-
-Example:
-
-- Home Page
-- Chat Room
-- Self Destruct Timer
-- Room Destroyed Screen
-
----
-
-## 🎯 Future Improvements
-
-- End-to-end encryption
-- File sharing
-- Typing indicators
-- Read receipts
-- Emoji reactions
-- Online presence
-- Message search
-- Mobile responsive improvements
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
+- Fix middleware wiring so room capacity is actually enforced (see above)
+- Environment-aware Eden Treaty client for non-local deploys
+- End-to-end message encryption
